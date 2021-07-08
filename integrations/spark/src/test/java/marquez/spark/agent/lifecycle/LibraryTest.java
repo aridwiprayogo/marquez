@@ -1,6 +1,7 @@
 package marquez.spark.agent.lifecycle;
 
 import static marquez.spark.agent.SparkAgentTestExtension.marquezContext;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -16,10 +17,11 @@ import java.io.IOException;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeoutException;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import marquez.spark.agent.SparkAgentTestExtension;
 import marquez.spark.agent.client.LineageEvent;
 import marquez.spark.agent.client.OpenLineageClient;
@@ -36,7 +38,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
-import scala.Tuple2;
 
 @ExtendWith(SparkAgentTestExtension.class)
 public class LibraryTest {
@@ -145,11 +146,13 @@ public class LibraryTest {
     JavaSparkContext sc = new JavaSparkContext(conf);
     JavaRDD<String> textFile = sc.textFile(url.getPath());
 
-    textFile
-        .flatMap(s -> Arrays.asList(s.split(" ")).iterator())
-        .mapToPair(word -> new Tuple2<>(word, 1))
-        .reduceByKey(Integer::sum)
-        .count();
+    //    textFile
+    //        .flatMap(s -> Arrays.asList(s.split(" ")).iterator())
+    //        .mapToPair(word -> new Tuple2<>(word, 1))
+    //        .reduceByKey(Integer::sum)
+    //        .count();
+
+    textFile.filter(w -> w.length() > 3).saveAsTextFile("test_data/test_output/");
 
     sc.stop();
 
@@ -174,6 +177,19 @@ public class LibraryTest {
     }
 
     verifySerialization(events);
+  }
+
+  @Test
+  public void testRDDName() {
+    SparkConf conf = new SparkConf().setAppName("Word Count").setMaster("local[*]");
+    JavaSparkContext sc = new JavaSparkContext(conf);
+    JavaRDD<Integer> numbers =
+        sc.parallelize(IntStream.range(1, 100).mapToObj(Integer::new).collect(Collectors.toList()));
+    numbers.setName("numbers");
+    JavaRDD<String> transformed =
+        numbers.filter(n -> n > 10 && n < 90).map(i -> i * i).map(String::valueOf);
+    String s = RddExecutionContext.nameRDD(transformed.rdd());
+    assertThat(s).isEqualTo("map_partitions_numbers");
   }
 
   private void verifySerialization(List<LineageEvent> events) throws JsonProcessingException {
